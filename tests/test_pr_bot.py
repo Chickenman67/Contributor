@@ -9,3 +9,12 @@ def test_builders_and_gate():
     assert "AI-assisted" in body and "bot" in body and "owner" in body and "ruff ok" in body
     assert diff_line_count("a\nb\nc") == 3
     assert diff_line_count("\n".join([f"l{i}" for i in range(250)])) == 250
+
+
+def test_gate_blocks_over_limits():
+    from src.pr_bot import exceeds_caps
+    big_diff = "\n".join([f"l{i}" for i in range(250)])
+    assert exceeds_caps(6, 0, "small") is True
+    assert exceeds_caps(0, 2, "small") is True
+    assert exceeds_caps(0, 0, big_diff) is True
+    assert exceeds_caps(1, 0, "small") is False

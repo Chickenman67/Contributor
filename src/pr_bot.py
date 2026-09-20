@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import requests
 from src.scanner import Candidate
+from src.state import already_tried
 
 DAILY_MAX_PRS = 5
 PER_REPO_MAX = 1
@@ -25,7 +26,7 @@ def build_pr_body(candidate: Candidate, verify_log: str, bot_account: str, owner
         f"Rule: `{candidate.rule}`\nFile: `{candidate.file}`\nExcerpt: {candidate.excerpt}\n\n"
         f"Verify:\n```\n{verify_log[:2000]}\n```\n\n"
         "Closes on request. Obeys CONTRIBUTING.md.\n"
-        "Signed-off-by: bot <bot@example.com>\n"
+        f"Signed-off-by: {bot_account} <{bot_account}@example.com>\n"
     )
 
 
@@ -33,12 +34,38 @@ def diff_line_count(diff: str) -> int:
     return len(diff.splitlines())
 
 
+def exceeds_caps(total_opened: int, repo_opened: int, diff: str) -> bool:
+    return (
+        total_opened >= DAILY_MAX_PRS
+        or repo_opened >= PER_REPO_MAX
+        or diff_line_count(diff) > MAX_DIFF_LINES
+    )
+
+
+def is_duplicate(state: dict, branch: str, title: str) -> bool:
+    return already_tried(state, branch, title)
+
+
 def post_pull_request(token: str, owner: str, repo: str, title: str, head: str, base: str, body: str) -> requests.Response:
     time.sleep(2)
-    resp = requests.post(
-        f"{API}/repos/{owner}/{repo}/pulls",
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
-        json={"title": title, "head": head, "base": base, "body": body},
-        timeout=60,
-    )
+    backoffs = (2, 8, 30)
+    resp: requests.Response | None = None
+    for attempt in range(3):
+        resp = requests.post(
+            f"{API}/repos/{owner}/{repo}/pulls",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+            json={"title": title, "head": head, "base": base, "body": body},
+            timeout=60,
+        )
+        if resp.status_code != 429 and not (500 <= resp.status_code < 600):
+            return resp
+        if attempt == 2:
+            return resp
+        retry_after = resp.headers.get("Retry-After") if resp.headers else None
+        try:
+            delay = int(str(retry_after)) if retry_after is not None else backoffs[attempt + 1]
+        except (ValueError, TypeError):
+            delay = backoffs[attempt + 1]
+        time.sleep(delay)
+    assert resp is not None
     return resp
