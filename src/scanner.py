@@ -64,7 +64,7 @@ def _detect_unpinned_action(path: Path, rel: str) -> list[Candidate]:
         return []
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (UnicodeDecodeError, OSError):
         return []
     for line in text.splitlines():
         s = line.strip()
