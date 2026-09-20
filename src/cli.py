@@ -15,7 +15,7 @@ from src.pr_bot import (
     exceeds_caps,
     is_duplicate,
 )
-from src.state import load_state, record_closed
+from src.state import load_state, record_closed, save_state
 
 
 def _ensure_state(path_str: str) -> dict:
@@ -62,19 +62,22 @@ def main(argv: list[str] | None = None) -> int:
             continue
         branch = build_branch_name(c.rule, date_str)
         title = build_pr_title(c)
-        stable_key = f"{c.rule}||{c.file}||{title}"
-        if is_duplicate(state, branch, title) or stable_key in state.get("closed_prs", []):
+        # Rotation-proof without schema change: canonical key is branch||title
+        # (branch embeds date), so also match on stable title-only suffix.
+        if is_duplicate(state, branch, title) or any(
+            k.endswith(f"||{title}") for k in state.get("closed_prs", [])
+        ):
             continue
         body = build_pr_body(c, "dry-run verify ok", "bot", "owner")
-        print(f"would-open branch={branch} title={title} body_len={len(body)}")
+        if args.dry_run:
+            print(f"would-open branch={branch} title={title} body_len={len(body)}")
+        else:
+            # Task 7 owns push; v1 live path previews only, never pushes.
+            print(f"live-preview (no push in v1) branch={branch} title={title} body_len={len(body)}")
         total_opened += 1
         per_repo[repo_id] = per_repo.get(repo_id, 0) + 1
-        # Stable key survives date rotation (branch embeds date).
-        record_closed(state, c.rule, f"{c.file}||{title}")
-        if args.dry_run:
-            continue
-        # Live push wiring (fork/branch/push + PR creation) is Task 7+.
-        # Dry-run path above performs zero network POST calls by construction.
+        record_closed(state, branch, title)
+    save_state(args.state, state)
     return 0
 
 
