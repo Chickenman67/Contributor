@@ -1,6 +1,41 @@
 repos:
-  - owner: example
-    repo: demo
+  - owner: astral-sh
+    repo: ruff
     base: main
-    labels: [ai-assisted]
+    labels: []
+    enabled: true
+  - owner: projectdiscovery
+    repo: nuclei-templates
+    base: master
+    labels: []
+    enabled: true
+  - owner: hiero-ledger
+    repo: hiero-sdk-python
+    base: main
+    labels: []
+    enabled: true
+  - owner: LMCache
+    repo: LMCache
+    base: main
+    labels: []
+    enabled: true
+  - owner: twentyhq
+    repo: twenty
+    base: main
+    labels: []
+    enabled: true
+  - owner: go-task
+    repo: task
+    base: main
+    labels: []
+    enabled: true
+  - owner: excaliburjs
+    repo: Excalibur
+    base: dev
+    labels: []
+    enabled: true
+  - owner: kubernetes-sigs
+    repo: kind
+    base: main
+    labels: []
     enabled: true
