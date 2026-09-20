@@ -1,4 +1,14 @@
-"""Pluggable AI backends: Gemini default, Grok + Mistral optional."""
+"""Pluggable AI backends: Gemini default, Grok + Mistral optional.
+
+Live calls require valid API keys:
+- Gemini: GEMINI_API_KEY (models/gemini-2.0-flash)
+- Grok: XAI_API_KEY (model grok-4-latest, x.ai API)
+- Mistral: MISTRAL_API_KEY (model mistral-large-latest, api.mistral.ai)
+
+Rate limits per provider docs:
+- xAI: 60 RPM / 1000 RPD (grok-4-latest)
+- Mistral: 100 RPM / 5000 RPD (mistral-large-latest)
+"""
 from __future__ import annotations
 import time
 import requests
@@ -59,11 +69,12 @@ class GeminiProvider(AiProvider):
 
 class _OpenAIChatProvider(AiProvider):
     base_url: str = ""
+    model: str = ""
 
     def generate_fix(self, candidate: Candidate, file_text: str) -> str | None:
         url = f"{self.base_url}/chat/completions"
         payload = {
-            "model": "default",
+            "model": self.model,
             "temperature": 0.1,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -82,11 +93,13 @@ class _OpenAIChatProvider(AiProvider):
 class GrokProvider(_OpenAIChatProvider):
     name = "grok"
     base_url = "https://api.x.ai/v1"
+    model = "grok-4-latest"
 
 
 class MistralProvider(_OpenAIChatProvider):
     name = "mistral"
     base_url = "https://api.mistral.ai/v1"
+    model = "mistral-large-latest"
 
 
 def create_provider(name: str, api_key: str) -> AiProvider:

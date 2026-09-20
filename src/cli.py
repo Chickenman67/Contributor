@@ -76,8 +76,10 @@ def main(argv: list[str] | None = None) -> int:
             print(f"live-preview (no push in v1) branch={branch} title={title} body_len={len(body)}")
         total_opened += 1
         per_repo[repo_id] = per_repo.get(repo_id, 0) + 1
-        record_closed(state, branch, title)
-    save_state(args.state, state)
+        if not args.dry_run:
+            record_closed(state, branch, title)
+    if not args.dry_run:
+        save_state(args.state, state)
     return 0
 
 

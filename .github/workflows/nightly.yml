@@ -8,7 +8,7 @@ on:
         description: "Dry run (no push)"
         default: "true"
 permissions:
-  contents: read
+  contents: read  # PAT used for future live PRs; GITHUB_TOKEN stays read-only
 concurrency:
   group: contributor-nightly
   cancel-in-progress: false
@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m src.cli ${{ inputs.dry_run != 'false' && '--dry-run' || '' }}
+      - run: python -m src.cli --dry-run  # v1 dry-run preview only; live disabled
         env:
           BOT_PAT: ${{ secrets.BOT_PAT }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
