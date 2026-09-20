@@ -1,0 +1,6 @@
+repos:
+  - owner: example
+    repo: demo
+    base: main
+    labels: [ai-assisted]
+    enabled: true
