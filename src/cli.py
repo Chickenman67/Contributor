@@ -3,20 +3,19 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from datetime import date
 from pathlib import Path
 from src.scanner import load_candidates
 from src.ai_providers import create_provider
 from src.pr_bot import (
     DAILY_MAX_PRS,
-    MAX_DIFF_LINES,
     build_branch_name,
     build_pr_title,
     build_pr_body,
-    diff_line_count,
     exceeds_caps,
     is_duplicate,
 )
-from src.state import load_state
+from src.state import load_state, record_closed
 
 
 def _ensure_state(path_str: str) -> dict:
@@ -33,7 +32,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--repo-path", default=".")
     ap.add_argument("--state", default="state/closed.json")
     args = ap.parse_args(argv)
+    # Fail fast: live runs require BOT_PAT before any scan/I/O.
+    if not args.dry_run and not os.environ.get("BOT_PAT"):
+        print("missing BOT_PAT")
+        return 2
     repo = Path(args.repo_path)
+    repo_id = repo.resolve().name or str(repo)
     cands = load_candidates(str(repo))
     print(f"candidates={len(cands)} dry_run={args.dry_run}")
     state = _ensure_state(args.state)
@@ -49,26 +53,28 @@ def main(argv: list[str] | None = None) -> int:
             create_provider(provider_name, provider_key)
         except ValueError:
             pass
-    shown = 0
+    total_opened: int = 0
+    per_repo: dict[str, int] = {}
+    date_str = date.today().strftime("%Y%m%d")
     for c in cands[:DAILY_MAX_PRS]:
         diff = f"--- a/{c.file}\n+++ b/{c.file}\n# rule={c.rule}"
-        if diff_line_count(diff) > MAX_DIFF_LINES:
+        if exceeds_caps(total_opened, per_repo.get(repo_id, 0), diff):
             continue
-        if exceeds_caps(shown, shown, diff):
-            continue
-        branch = build_branch_name(c.rule, "20260920")
+        branch = build_branch_name(c.rule, date_str)
         title = build_pr_title(c)
-        if is_duplicate(state, branch, title):
+        stable_key = f"{c.rule}||{c.file}||{title}"
+        if is_duplicate(state, branch, title) or stable_key in state.get("closed_prs", []):
             continue
         body = build_pr_body(c, "dry-run verify ok", "bot", "owner")
-        print(f"would-open branch={branch} title={title}")
-        shown += 1
+        print(f"would-open branch={branch} title={title} body_len={len(body)}")
+        total_opened += 1
+        per_repo[repo_id] = per_repo.get(repo_id, 0) + 1
+        # Stable key survives date rotation (branch embeds date).
+        record_closed(state, c.rule, f"{c.file}||{title}")
         if args.dry_run:
             continue
-    token = os.environ.get("BOT_PAT", "")
-    if not args.dry_run and not token:
-        print("missing BOT_PAT")
-        return 2
+        # Live push wiring (fork/branch/push + PR creation) is Task 7+.
+        # Dry-run path above performs zero network POST calls by construction.
     return 0
 
 

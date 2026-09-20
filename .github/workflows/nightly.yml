@@ -7,19 +7,22 @@ on:
       dry_run:
         description: "Dry run (no push)"
         default: "true"
+permissions:
+  contents: read
 concurrency:
   group: contributor-nightly
   cancel-in-progress: false
 jobs:
   scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pinned v4.1.0
+      - uses: actions/setup-python@7431c99d9054b8dd6716ef35c0ef6d26432dd51f # pinned v5
         with:
           python-version: "3.11"
       - run: pip install -r requirements.txt
-      - run: python -m src.cli --dry-run
+      - run: python -m src.cli ${{ inputs.dry_run != 'false' && '--dry-run' || '' }}
         env:
           BOT_PAT: ${{ secrets.BOT_PAT }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
