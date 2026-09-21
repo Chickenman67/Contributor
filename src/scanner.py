@@ -3,7 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-SKIP_DIRS = {".git", "__pycache__", ".venv", "node_modules"}
+SKIP_DIRS = {
+    ".git",
+    "__pycache__",
+    ".venv",
+    "node_modules",
+    ".pytest_cache",
+    ".superpowers",
+    ".hypothesis",
+    ".mypy_cache",
+    ".ruff_cache",
+}
 MAX_BYTES = 200_000
 
 
