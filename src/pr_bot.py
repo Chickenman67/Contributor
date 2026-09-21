@@ -1,6 +1,9 @@
 """PR construction, caps, and GitHub REST creation."""
 from __future__ import annotations
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 import requests
 from src.scanner import Candidate
 from src.state import already_tried
@@ -44,6 +47,31 @@ def exceeds_caps(total_opened: int, repo_opened: int, diff: str) -> bool:
 
 def is_duplicate(state: dict, branch: str, title: str) -> bool:
     return already_tried(state, branch, title)
+
+
+def run_git(args: list[str], cwd: str) -> tuple[int, str]:
+    proc = subprocess.run(
+        ["git"] + args, cwd=cwd, capture_output=True, text=True, timeout=120
+    )
+    return proc.returncode, (proc.stdout + proc.stderr).strip()
+
+
+def apply_patch_via_git(cwd: str, patch_text: str) -> bool:
+    if "--- " not in patch_text and "diff --git" not in patch_text:
+        return False
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".patch", delete=False, encoding="utf-8"
+    ) as f:
+        f.write(patch_text)
+        patch_path = f.name
+    try:
+        rc, _ = run_git(["apply", "--whitespace=fix", patch_path], cwd)
+        return rc == 0
+    finally:
+        try:
+            Path(patch_path).unlink()
+        except OSError:
+            pass
 
 
 def post_pull_request(token: str, owner: str, repo: str, title: str, head: str, base: str, body: str) -> requests.Response:
