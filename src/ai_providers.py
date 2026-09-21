@@ -43,6 +43,7 @@ def _post_with_backoff(url: str, headers: dict, payload: dict, tries: int = 3) -
 
 class AiProvider:
     name: str = "base"
+    last_error: str = ""
 
     def __init__(self, api_key: str) -> None:
         self.api_key = api_key
@@ -59,11 +60,13 @@ class GeminiProvider(AiProvider):
         payload = {"contents": [{"parts": [{"text": f"{SYSTEM_PROMPT}\nRule: {candidate.rule}\nFile: {candidate.file}\nExcerpt: {candidate.excerpt}\nContent:\n{file_text[:8000]}"}]}]}
         resp = _post_with_backoff(url, {}, payload)
         if resp.status_code != 200:
+            self.last_error = f"gemini HTTP {resp.status_code}: {resp.text[:200]}"
             return None
         try:
             parts = resp.json()["candidates"][0]["content"]["parts"]
             return "".join(p.get("text", "") for p in parts) or None
-        except (KeyError, IndexError, TypeError):
+        except (KeyError, IndexError, TypeError) as e:
+            self.last_error = f"gemini parse error: {e}"
             return None
 
 
@@ -83,10 +86,12 @@ class _OpenAIChatProvider(AiProvider):
         }
         resp = _post_with_backoff(url, {"Authorization": f"Bearer {self.api_key}"}, payload)
         if resp.status_code != 200:
+            self.last_error = f"{self.name} HTTP {resp.status_code}: {resp.text[:200]}"
             return None
         try:
             return resp.json()["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError):
+        except (KeyError, IndexError, TypeError) as e:
+            self.last_error = f"{self.name} parse error: {e}"
             return None
 
 

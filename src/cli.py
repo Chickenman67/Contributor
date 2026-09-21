@@ -62,6 +62,30 @@ def _api_key_for(provider: str) -> str:
     return os.environ.get(mapping.get(provider, ""), "")
 
 
+def _deterministic_fix(target: Path, rule: str) -> bool:
+    """Fix trivial rules without AI. Returns True if the file changed."""
+    try:
+        if rule == "trailing-whitespace":
+            lines = target.read_text(encoding="utf-8").splitlines(keepends=True)
+            fixed = [
+                (ln.rstrip("\r\n").rstrip() + "\n") if ln.strip() else ln
+                for ln in lines
+            ]
+            if fixed != lines:
+                target.write_text("".join(fixed), encoding="utf-8")
+                return True
+            return False
+        if rule == "missing-eof-newline":
+            raw = target.read_bytes()
+            if raw and not raw.endswith(b"\n"):
+                target.write_bytes(raw + b"\n")
+                return True
+            return False
+    except (OSError, UnicodeDecodeError):
+        return False
+    return False
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -134,22 +158,35 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, UnicodeDecodeError):
             continue
         diff: str | None = None
-        for pname in order:
-            key = _api_key_for(pname)
-            if not key:
+        if c.rule in ("trailing-whitespace", "missing-eof-newline"):
+            if not _deterministic_fix(target, c.rule):
+                print(f"skip {c.file}: already fixed")
                 continue
-            try:
-                diff = create_provider(pname, key).generate_fix(
-                    c, file_text[:8000]
-                )
-            except Exception as e:  # noqa: BLE001 - network/SDK errors skip to next provider
-                print(f"provider {pname} error: {e}")
+            rc, _diff = run_git(["diff", "--", c.file], cwd)
+            run_git(["checkout", "--", c.file], cwd)
+            if rc != 0 or not _diff.strip():
+                print(f"skip {c.file}: empty diff after deterministic fix")
                 continue
-            if diff:
-                break
-        if not diff:
-            print(f"skip {c.file}: no AI diff")
-            continue
+            diff = _diff
+            print(f"deterministic fix for {c.file} ({c.rule})")
+        else:
+            for pname in order:
+                key = _api_key_for(pname)
+                if not key:
+                    print(f"provider {pname}: skipped (no key)")
+                    continue
+                try:
+                    provider = create_provider(pname, key)
+                    diff = provider.generate_fix(c, file_text[:8000])
+                except Exception as e:  # noqa: BLE001 - network/SDK errors skip to next provider
+                    print(f"provider {pname} error: {e}")
+                    continue
+                if diff:
+                    break
+                print(f"provider {pname}: no diff ({provider.last_error[:150]})")
+            if not diff:
+                print(f"skip {c.file}: no AI diff")
+                continue
         if exceeds_caps(total_opened, per_repo, diff):
             print(f"skip {c.file}: over caps/diff size")
             continue
